@@ -1,0 +1,19 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    // Profile photos: uploaded from the profile page after crop.
+    // Download URLs are tokenised (they bypass rules on read), but the
+    // upload itself must be allowed here.
+    match /avatars/{userId}.jpg {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null
+        && request.auth.uid == userId
+        && request.resource.size < 5 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+    }
+
+    // Anything else in the bucket is not written by the app today.
+    // If you store other files, keep your existing block for them here.
+  }
+}

@@ -1,0 +1,56 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Own account doc + all subcollections (transactions, wallet).
+    match /users/{userId}/{document=**} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // Public directory used to find members by email or @username.
+    // App writes always merge in `uid`, so request.resource.data.uid is set
+    // for both create and update.
+    match /profiles/{profileId} {
+      allow read: if request.auth != null;
+      allow create, update: if request.auth != null
+        && request.auth.uid == request.resource.data.uid;
+      allow delete: if request.auth != null && request.auth.uid == resource.data.uid;
+    }
+
+    // Unique @username handles, claimed from the profile page.
+    match /usernames/{handle} {
+      // The claim transaction must be able to read any handle to detect
+      // that it is already taken before attempting to write.
+      allow read: if request.auth != null;
+
+      // Only the owner may claim, keep, or release a handle.
+      allow create: if request.auth != null
+        && request.resource.data.uid == request.auth.uid;
+      allow update: if request.auth != null
+        && resource.data.uid == request.auth.uid
+        && request.resource.data.uid == request.auth.uid;
+      allow delete: if request.auth != null
+        && resource.data.uid == request.auth.uid;
+    }
+
+    match /groups/{groupId} {
+      allow read, update: if request.auth != null
+        && request.auth.uid in resource.data.memberIds;
+      allow create: if request.auth != null
+        && request.auth.uid in request.resource.data.memberIds;
+      allow delete: if request.auth != null
+        && request.auth.uid == resource.data.createdBy;
+
+      match /expenses/{expenseId} {
+        allow read, create, delete: if request.auth != null &&
+          request.auth.uid in get(/databases/$(database)/documents/groups/$(groupId)).data.memberIds;
+
+        // Members may edit an expense (group detail -> Edit).
+        // NOTE: the old rules had `allow update: if false`, which blocks
+        // the app's edit-expense flow entirely.
+        allow update: if request.auth != null &&
+          request.auth.uid in get(/databases/$(database)/documents/groups/$(groupId)).data.memberIds;
+      }
+    }
+  }
+}

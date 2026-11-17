@@ -1,0 +1,101 @@
+# Expenty — Current Scope & Handoff
+
+> Snapshot: 07 Nov 2026. Read this first to onboard; then run `flutter analyze` and `flutter test` to confirm green.
+
+## 1. What it is
+**Expenty** — personal finance tracker **+ Splitwise-style group expense splitter**, Flutter app at `D:\Flutter Project\expenty`.
+Currency is **₹ (en_IN)** everywhere — hard-coded in `lib/core/utils/currency_formatter.dart`. **Do not change it.**
+
+## 2. Stack & architecture
+- Flutter **3.35.6** stable, Android-first (user tests on device).
+- **Clean Architecture**, per feature: `lib/features/<feature>/{domain,data,presentation}` (entities → repositories iface → datasources → repo impl → use cases → bloc → pages/widgets).
+- **BLoC** (flutter_bloc 9) + **get_it** DI (`lib/app/di/service_locator.dart`), **go_router** 17 (`lib/app/app_router.dart`, `route_names.dart`).
+- **Firebase**: Auth (Email/Password — enabled & verified working) + **Cloud Firestore**. No Firebase Storage, no cloud functions yet.
+- Firebase project `expenty-wise`, Android package `com.anandchowbey.expenty` (`android/app/google-services.json`, `ios/Runner/GoogleService-Info.plist`, `lib/firebase_options.dart` all present).
+
+## 3. Verified status
+- `flutter analyze` → **No issues found**
+- `flutter test` → **39 tests passing** (8 files in `test/`)
+- `flutter build apk --debug` → builds (`build/app/outputs/flutter-apk/app-debug.apk`)
+
+## 4. Features DONE
+- **Auth**: login, full sign-up form, forgot password, logout (Menu tab). Routes wired; profile + directory docs written on signup.
+- **Dashboard** (matches the provided mock): navy Total Balance card, Income/Expense card, Top-5 expenses (current week), Spend-vs-budget grid, 4-tab bottom nav, live Firestore data, empty/error states with Retry.
+- **Wallet / Add balance**: “+ Add balance” pill on the balance card → bottom sheet (quick chips ₹500/1000/2000/5000).
+  **Total Balance = wallet balance + income − expenses** (`users/{uid}.walletBalance`, atomic `FieldValue.increment`).
+- **Transactions**: Add Transaction page (type/amount/title/date/category/note), delete supported; drives dashboard + budget data.
+- **Budget tab**: per-category monthly limits, create/edit/delete dialogs, spend-vs-budget on dashboard.
+- **Groups (Splitwise-style)** — replaced the old “Merchants” tab:
+  - Groups tab (list + your net per group), New group page (**invite by email → must be a registered Expenty user**).
+  - Group detail: **Settlements only** — per-member net (“Rahul owes ₹500” / “You are owed ₹300”), no pairwise ledger; expense list with split breakdown dialog + delete (confirm).
+  - Add expense with **4 split modes: Equal · Ratio · Percentage · Custom amount**, live per-member preview, totals validation.
+  - `memberBalances` map on the group doc is updated inside a **Firestore transaction** on add/delete expense.
+  - Dashboard card **“Across your groups → You owe / You are owed”** below Total Balance.
+
+## 5. NOT done — next features
+1. **Profile photo & details** ← user's chosen 3rd feature, **not started**.
+   - Menu tab → “Profile is coming soon”; `RouteNames.profile` exists but no route/page registered.
+   - Needs: profile page (view/edit display name), photo via `image_picker` + upload to **Firebase Storage** (package not added yet), `NSPhotoLibraryUsageDescription` (+ camera keys) in `ios/Runner/Info.plist`.
+2. **Google / Apple sign-in buttons** — present on Login but dead `onPressed: () {}`.
+3. **Dashboard header actions** → “coming soon” snackbars: Transfers, Insights, My Balances, Date filters.
+4. **Settings page** (Menu → coming soon).
+5. Ideas not built: group **settle-up** action; editing a group expense (rules currently allow create/delete only, `update: if false`).
+
+## 6. ⚠️ Blocker — user must do in Firebase console
+1. **Create the Firestore database** (probe returned `404: database (default) does not exist`):
+   `console.cloud.google.com/datastore/setup?project=expenty-wise` → Production mode.
+2. **Publish rules** (the single-level rule does NOT cover subcollections/groups):
+```
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /users/{userId}/{document=**} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+    match /profiles/{profileId} {
+      allow read: if request.auth != null;
+      allow create, update: if request.auth != null && request.auth.uid == request.resource.data.uid;
+      allow delete: if request.auth != null && request.auth.uid == resource.data.uid;
+    }
+    match /groups/{groupId} {
+      allow read, update: if request.auth != null && request.auth.uid in resource.data.memberIds;
+      allow create: if request.auth != null && request.auth.uid in request.resource.data.memberIds;
+      allow delete: if request.auth != null && request.auth.uid == resource.data.createdBy;
+      match /expenses/{expenseId} {
+        allow read, create, delete: if request.auth != null &&
+          request.auth.uid in get(/databases/$(database)/documents/groups/$(groupId)).data.memberIds;
+        allow update: if false;
+      }
+    }
+  }
+}
+```
+
+## 7. Firestore schema
+| Path | Contents |
+|---|---|
+| `users/{uid}` | profile + `walletBalance`, `walletUpdatedAt`; subcollections `transactions/{id}`, `budgets/{categoryId}` |
+| `profiles/{uid}` | `{uid, name, email, emailLower}` — public directory for invite-by-email (written at signup, re-synced when Groups tab watches) |
+| `groups/{gid}` | `name, createdBy, createdAt, memberIds[], members[{uid,name,email}], memberBalances{uid: net}` |
+| `groups/{gid}/expenses/{id}` | `title, amount, paidBy, splitType, shares{uid: amount}, splitLabel, date, createdAt, createdBy` |
+
+Balance rule: **payer credited the full amount, every member debited their share** → negative = still owes, positive = overpaid (pure math in `lib/features/groups/domain/group_balances.dart`, splits in `split_calculator.dart`).
+
+## 8. Conventions & traps (learned the hard way)
+- **₹ / en_IN** — never switch to `$`.
+- BLoCs are `registerFactory` in `service_locator.dart`; tests do `await setupLocator()` → `sl.unregister<XRepository>()` → register a fake (keeps `FirebaseAuth.instance` untouched).
+- Widget tests need a tall viewport: `tester.view.physicalSize = const Size(1080, 2400); devicePixelRatio = 1.0; addTearDown(tester.view.reset);` and `GoogleFonts.config.allowRuntimeFetching = false`.
+- Read blocs only from a context **below** the provider (pass `blocContext` into handlers) or you get `ProviderNotFoundException`.
+- `copyWith` must **preserve fields not passed** (wiping `group` broke the group page once).
+- Never dispose a `TextEditingController` right after `await showModalBottomSheet` — own it in a `StatefulWidget` (it killed the app with `_dependents.isEmpty` cascade; regression covered by `test/app_navigation_flow_test.dart`).
+- Avoid Firestore `array-contains + orderBy` (needs a composite index) → sort in memory.
+- `AuthService.currentUser` wraps FirebaseAuth in try/catch → returns `null` in widget tests (never crash).
+- Dashboard owns the single `GroupsBloc` (owe/pay card); `GroupsTab` reads it from above — don't create a second one.
+
+## 9. Key files
+- `lib/app/{app_router.dart, router/route_names.dart, di/service_locator.dart, theme/}`
+- `lib/core/{widgets/ (AppSnackbar, PrimaryButton/TextField), utils/currency_formatter.dart, services/firebase_service.dart (AuthService)}`
+- `lib/features/dashboard/presentation/pages/dashboard_page.dart` (tabs, providers, owe/pay card)
+- `lib/features/groups/…` (blocs, `group_balances.dart`, `split_calculator.dart`, 4 pages)
+- `lib/features/wallet/…`, `lib/features/transactions/…`, `lib/features/budgets/…`
+- `test/app_navigation_flow_test.dart` — full click-through regression (add balance, groups, expense save, dialogs).

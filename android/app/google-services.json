@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "226302978405",
+    "project_id": "expenty-wise",
+    "storage_bucket": "expenty-wise.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:226302978405:android:fe238f046cfe125452598c",
+        "android_client_info": {
+          "package_name": "com.anandchowbey.expenty"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCEg68CxOsdMvXWX60sSmPX-yY8tdlGvIc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

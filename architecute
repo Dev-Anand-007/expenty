@@ -1,0 +1,32 @@
+lib/
+│
+├── app/
+│   ├── app.dart
+│   ├── router/
+│   ├── theme/
+│   └── di/
+│
+├── core/
+│   ├── constants/
+│   ├── enums/
+│   ├── errors/
+│   ├── extensions/
+│   ├── services/
+│   ├── utils/
+│   ├── widgets/
+│   └── network/
+│
+├── features/
+│
+│   ├── auth/
+│   ├── dashboard/
+│   ├── wallet/
+│   ├── transaction/
+│   ├── category/
+│   ├── groups/
+│   ├── settlement/
+│   ├── analytics/
+│   ├── profile/
+│   └── settings/
+│
+└── main.dart

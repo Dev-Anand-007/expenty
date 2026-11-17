@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Native (pre-Flutter) launch screen. Matches the first frame of
+         assets/images/splash_animation.gif so the OS splash hands over to the
+         animated one without a colour flash. -->
+    <color name="splash_background">#0D132B</color>
+</resources>
